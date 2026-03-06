@@ -225,7 +225,7 @@ Future<Map<String, dynamic>?> fetchMatchDetails(int mackolikId) async {
     });
     // DEBUG: Ham veriyi görelim
     log('  🔍 Stats HTTP ${res.statusCode} | Uzunluk: ${res.body.length}');
-    log('  🔍 Stats ilk 500 karakter: ${res.body.substring(0, res.body.length > 500 ? 5000 : res.body.length)}');
+    log('  🔍 Stats HAM: ${res.body}');
 
     if (res.statusCode != 200 || res.body.trim().isEmpty) return null;
     if (res.body.trim().startsWith('<')) return null; // HTML = hata
