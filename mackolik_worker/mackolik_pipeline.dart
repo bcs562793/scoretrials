@@ -223,10 +223,6 @@ Future<Map<String, dynamic>?> fetchMatchDetails(int mackolikId) async {
       ...macHeaders,
       'Referer': 'https://arsiv.mackolik.com/Mac/$mackolikId/',
     });
-    // DEBUG: Ham veriyi görelim
-    log('  🔍 Stats HTTP ${res.statusCode} | Uzunluk: ${res.body.length}');
-    log('  🔍 Stats HAM: ${res.body}');
-
     if (res.statusCode != 200 || res.body.trim().isEmpty) return null;
     if (res.body.trim().startsWith('<')) return null; // HTML = hata
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -408,56 +404,70 @@ List<Map<String, dynamic>>? transformLineups(Map<String, dynamic> details, Match
 }
 
 /// STATISTICS: optaStats HTML → match_statistics.data JSON
-/// Şema: fixture_id, data (jsonb [{team:{}, statistics:[{type, value}]}]), updated_at
+/// Mackolik HTML'i parse edip API-Football formatına çevir
 List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) {
   if (html.trim().length < 20) return null;
 
-  final rawStats = <Map<String, dynamic>>[];
-
-  String? parseVal(String v) {
-    v = v.trim().replaceAll('%', '').replaceAll('&nbsp;', '').trim();
-    if (v.isEmpty || v == '-') return null;
-    return v;
+  // JSON geliyorsa stats HTML değil, atla
+  if (html.trim().startsWith('{') || html.trim().startsWith('[')) {
+    log('  ⚠️ Stats: JSON döndü, HTML bekleniyor — atlanıyor');
+    return null;
   }
 
-  // Pattern 1: div class tabanlı
-  final p1 = RegExp(
-    r'team-1-statistics-text"[^>]*>([\s\S]*?)<\/div>[\s\S]*?statistics-title-text"[^>]*>([\s\S]*?)<\/div>[\s\S]*?team-2-statistics-text"[^>]*>([\s\S]*?)<\/div>',
-  );
-  for (final m in p1.allMatches(html)) {
-    final homeRaw = m.group(1)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-    final titleTR = m.group(2)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-    final awayRaw = m.group(3)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-    final title = statsNameMap[titleTR] ?? titleTR;
-    if (title.isNotEmpty && homeRaw.isNotEmpty && awayRaw.isNotEmpty) {
-      rawStats.add({'type': title, 'home': parseVal(homeRaw), 'away': parseVal(awayRaw)});
-    }
+  // Basit yaklaşım: 3 listeyi ayrı ayrı çek, sonra zip'le
+  final homeValues = RegExp(r'team-1-statistics-text">\s*([^<]+)\s*<')
+      .allMatches(html)
+      .map((m) => m.group(1)!.trim())
+      .toList();
+
+  final titles = RegExp(r'statistics-title-text">\s*([^<]+)\s*<')
+      .allMatches(html)
+      .map((m) => m.group(1)!.trim())
+      .toList();
+
+  final awayValues = RegExp(r'team-2-statistics-text">\s*([^<]+)\s*<')
+      .allMatches(html)
+      .map((m) => m.group(1)!.trim())
+      .toList();
+
+  log('  🔍 Stats parse: ${titles.length} istatistik bulundu');
+
+  // 3 liste aynı uzunlukta olmalı
+  final count = [homeValues.length, titles.length, awayValues.length].reduce((a, b) => a < b ? a : b);
+  if (count == 0) {
+    log('  ⚠️ Stats: HTML parse başarısız, 0 istatistik');
+    return null;
   }
 
-  // Pattern 2: td class tabanlı
-  if (rawStats.isEmpty) {
-    final p2 = RegExp(
-      r'<td[^>]+class="[^"]*team1[^"]*"[^>]*>([\s\S]*?)<\/td>[\s\S]*?<td[^>]+class="[^"]*statsName[^"]*"[^>]*>([\s\S]*?)<\/td>[\s\S]*?<td[^>]+class="[^"]*team2[^"]*"[^>]*>([\s\S]*?)<\/td>',
-    );
-    for (final m in p2.allMatches(html)) {
-      final homeRaw = m.group(1)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-      final titleTR = m.group(2)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-      final awayRaw = m.group(3)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
-      final title = statsNameMap[titleTR] ?? titleTR;
-      if (title.isNotEmpty && homeRaw.isNotEmpty && awayRaw.isNotEmpty) {
-        rawStats.add({'type': title, 'home': parseVal(homeRaw), 'away': parseVal(awayRaw)});
-      }
-    }
+  // Değer formatlama: API-Football formatına çevir
+  dynamic formatValue(String raw, String statType) {
+    raw = raw.trim();
+    // Yüzde değerleri: "%50" → "50%"
+    if (raw.startsWith('%')) return '${raw.substring(1)}%';
+    // Oran değerleri: "8/25" → "8/25" (string olarak)
+    if (raw.contains('/')) return raw;
+    // Sayısal değerler: "12" → 12
+    final n = int.tryParse(raw);
+    if (n != null) return n;
+    return raw;
   }
 
-  if (rawStats.isEmpty) return null;
+  // Home ve Away statistics listelerini oluştur
+  final homeStats = <Map<String, dynamic>>[];
+  final awayStats = <Map<String, dynamic>>[];
 
-  // Supabase formatına dönüştür
-  dynamic formatValue(String? val, String type) {
-    if (val == null) return null;
-    if (type == 'Ball Possession' || type == 'Passes %') return '$val%';
-    final n = int.tryParse(val);
-    return n ?? val;
+  for (int i = 0; i < count; i++) {
+    final titleTR = titles[i];
+    final titleEN = statsNameMap[titleTR] ?? titleTR;
+
+    homeStats.add(<String, dynamic>{
+      'type': titleEN,
+      'value': formatValue(homeValues[i], titleEN),
+    });
+    awayStats.add(<String, dynamic>{
+      'type': titleEN,
+      'value': formatValue(awayValues[i], titleEN),
+    });
   }
 
   return [
@@ -467,9 +477,7 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
         'name': match.homeTeamName,
         'logo': match.homeTeamLogo,
       },
-      'statistics': rawStats.map((s) =>
-        <String, dynamic>{'type': s['type'], 'value': formatValue(s['home'] as String?, s['type'] as String)}
-      ).toList(),
+      'statistics': homeStats,
     },
     {
       'team': {
@@ -477,9 +485,7 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
         'name': match.awayTeamName,
         'logo': match.awayTeamLogo,
       },
-      'statistics': rawStats.map((s) =>
-        <String, dynamic>{'type': s['type'], 'value': formatValue(s['away'] as String?, s['type'] as String)}
-      ).toList(),
+      'statistics': awayStats,
     }
   ];
 }
