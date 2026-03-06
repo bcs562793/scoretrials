@@ -19,8 +19,8 @@ import 'package:supabase/supabase.dart';
 /// ═══════════════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-final supabaseUrl = Platform.environment['SUPABASE_URL'] ?? '';
-final supabaseKey = Platform.environment['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+final supabaseUrl = Platform.environment['https://qyebmwiuvrmfxlgdaarc.supabase.co'] ?? '';
+final supabaseKey = Platform.environment['sb_secret_vAS4XeBOKTiFxXiabFqMVA_XVwgDcsv'] ?? '';
 
 late final SupabaseClient supabase;
 
