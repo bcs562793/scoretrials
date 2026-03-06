@@ -19,8 +19,8 @@ import 'package:supabase/supabase.dart';
 /// ═══════════════════════════════════════════════════════════════════════════
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-final supabaseUrl = Platform.environment['https://qyebmwiuvrmfxlgdaarc.supabase.co'] ?? '';
-final supabaseKey = Platform.environment['sb_secret_vAS4XeBOKTiFxXiabFqMVA_XVwgDcsv'] ?? '';
+final supabaseUrl = Platform.environment['SUPABASE_URL'] ?? '';
+final supabaseKey = Platform.environment['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
 
 late final SupabaseClient supabase;
 
@@ -463,9 +463,9 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
         'name': match.homeTeamName,
         'logo': match.homeTeamLogo,
       },
-      'statistics': rawStats.map((s) => {
-        return {'type': s['type'], 'value': formatValue(s['home'], s['type'])};
-      }).toList(),
+      'statistics': rawStats.map((s) =>
+        <String, dynamic>{'type': s['type'], 'value': formatValue(s['home'] as String?, s['type'] as String)}
+      ).toList(),
     },
     {
       'team': {
@@ -473,9 +473,9 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
         'name': match.awayTeamName,
         'logo': match.awayTeamLogo,
       },
-      'statistics': rawStats.map((s) => {
-        return {'type': s['type'], 'value': formatValue(s['away'], s['type'])};
-      }).toList(),
+      'statistics': rawStats.map((s) =>
+        <String, dynamic>{'type': s['type'], 'value': formatValue(s['away'] as String?, s['type'] as String)}
+      ).toList(),
     }
   ];
 }
