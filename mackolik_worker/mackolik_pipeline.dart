@@ -1,24 +1,24 @@
- import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:supabase/supabase.dart';
 
-/// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-/// ScorePop â€” Mackolik Live Data Pipeline (Dart)
+/// ═══════════════════════════════════════════════════════════════════════════
+/// ScorePop — Mackolik Live Data Pipeline (Dart)
 ///
-/// Tek script, tablo gereksiz. Her Ã§alÄ±ÅŸtÄ±ÄŸÄ±nda:
-///   1. Supabase live_matches â†’ canlÄ± maÃ§larÄ± al
-///   2. Mackolik livedata API â†’ gÃ¼nÃ¼n maÃ§larÄ±nÄ± al
-///   3. Runtime'da eÅŸleÅŸtir (takÄ±m adÄ± + tarih fuzzy match)
-///   4. Mackolik'ten events, stats, lineups, h2h, standings Ã§ek
-///   5. Supabase'e yaz (mevcut tablo ÅŸemalarÄ±na birebir)
+/// Tek script, tablo gereksiz. Her çalıştığında:
+///   1. Supabase live_matches → canlı maçları al
+///   2. Mackolik livedata API → günün maçlarını al
+///   3. Runtime'da eşleştir (takım adı + tarih fuzzy match)
+///   4. Mackolik'ten events, stats, lineups, h2h, standings çek
+///   5. Supabase'e yaz (mevcut tablo şemalarına birebir)
 ///
-/// KullanÄ±m:
+/// Kullanım:
 ///   dart run mackolik_pipeline.dart
 ///   dart run mackolik_pipeline.dart --fixture=1491915 --mackolik=4432754
-/// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/// ═══════════════════════════════════════════════════════════════════════════
 
-// â”€â”€â”€ CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
 final supabaseUrl = Platform.environment['SUPABASE_URL'] ?? '';
 final supabaseKey = Platform.environment['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
 
@@ -30,29 +30,29 @@ final macHeaders = {
   'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8',
 };
 
-// â”€â”€â”€ STATS NAME MAP (Mackolik TR â†’ API-Football EN) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── STATS NAME MAP (Mackolik TR → API-Football EN) ─────────────────────────
 const statsNameMap = {
   'Topla Oynama': 'Ball Possession',
-  'Toplam Åut': 'Total Shots',
-  'Ä°sabetli Åut': 'Shots on Goal',
-  'Ä°sabetsiz Åut': 'Shots off Goal',
-  'Bloke Edilen Åut': 'Blocked Shots',
-  'BaÅŸarÄ±lÄ± Paslar': 'Passes accurate',
-  'Pas BaÅŸarÄ±(%)': 'Passes %',
-  'Pas BaÅŸarÄ± %': 'Passes %',
+  'Toplam Şut': 'Total Shots',
+  'İsabetli Şut': 'Shots on Goal',
+  'İsabetsiz Şut': 'Shots off Goal',
+  'Bloke Edilen Şut': 'Blocked Shots',
+  'Başarılı Paslar': 'Passes accurate',
+  'Pas Başarı(%)': 'Passes %',
+  'Pas Başarı %': 'Passes %',
   'Korner': 'Corner Kicks',
-  'KÃ¶ÅŸe VuruÅŸu': 'Corner Kicks',
+  'Köşe Vuruşu': 'Corner Kicks',
   'Orta': 'Crosses',
   'Faul': 'Fouls',
   'Ofsayt': 'Offsides',
-  'SarÄ± Kart': 'Yellow Cards',
-  'KÄ±rmÄ±zÄ± Kart': 'Red Cards',
-  'KurtarÄ±ÅŸ': 'Goalkeeper Saves',
+  'Sarı Kart': 'Yellow Cards',
+  'Kırmızı Kart': 'Red Cards',
+  'Kurtarış': 'Goalkeeper Saves',
   'Tehlikeli Ataklar': 'Dangerous Attacks',
   'Ataklar': 'Attacks',
 };
 
-// â”€â”€â”€ EVENT TYPE MAP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── EVENT TYPE MAP ──────────────────────────────────────────────────────────
 const eventTypeMap = {
   1: {'type': 'Goal', 'detail': 'Normal Goal'},
   12: {'type': 'Goal', 'detail': 'Penalty'},
@@ -65,12 +65,12 @@ const eventTypeMap = {
 };
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// 1. MACKOLIK GÃœNLÃœK MAÃ‡ LÄ°STESÄ° (EÅŸleÅŸtirme iÃ§in)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. MACKOLIK GÜNLÜK MAÇ LİSTESİ (Eşleştirme için)
+// ═══════════════════════════════════════════════════════════════════════════
 
-/// Mackolik'ten bugÃ¼nÃ¼n tÃ¼m maÃ§larÄ±nÄ± Ã§eker
-/// DÃ¶nen format: [{mackolikId, homeTeam, awayTeam, homeMacId, awayMacId}]
+/// Mackolik'ten bugünün tüm maçlarını çeker
+/// Dönen format: [{mackolikId, homeTeam, awayTeam, homeMacId, awayMacId}]
 Future<List<MackolikMatch>> fetchMackolikDailyMatches() async {
   final now = DateTime.now();
   final macDate = '${now.day.toString().padLeft(2, '0')}/'
@@ -78,7 +78,7 @@ Future<List<MackolikMatch>> fetchMackolikDailyMatches() async {
       '${now.year}';
 
   final url = 'https://vd.mackolik.com/livedata?date=${Uri.encodeComponent(macDate)}';
-  log('ğŸ“¡ Mackolik livedata Ã§ekiliyor: $macDate');
+  log('📡 Mackolik livedata çekiliyor: $macDate');
 
   try {
     final res = await http.get(Uri.parse(url), headers: {
@@ -118,49 +118,49 @@ Future<List<MackolikMatch>> fetchMackolikDailyMatches() async {
       ));
     }
 
-    log('   âœ… Mackolik: ${matches.length} futbol maÃ§Ä± bulundu');
+    log('   ✅ Mackolik: ${matches.length} futbol maçı bulundu');
     return matches;
   } catch (e) {
-    logErr('Mackolik livedata hatasÄ±: $e');
+    logErr('Mackolik livedata hatası: $e');
     return [];
   }
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// 2. EÅLEÅTÄ°RME (Runtime - Tablo Gereksiz)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. EŞLEŞTİRME (Runtime - Tablo Gereksiz)
+// ═══════════════════════════════════════════════════════════════════════════
 
-/// TÃ¼rkÃ§e karakter normalizasyonu
+/// Türkçe karakter normalizasyonu
 String normalize(String name) {
   return name
       .toLowerCase()
-      .replaceAll('Ä±', 'i')
-      .replaceAll('ÄŸ', 'g')
-      .replaceAll('Ã¼', 'u')
-      .replaceAll('ÅŸ', 's')
-      .replaceAll('Ã¶', 'o')
-      .replaceAll('Ã§', 'c')
-      .replaceAll('Ã©', 'e')
-      .replaceAll('Ã¡', 'a')
-      .replaceAll('Ã±', 'n')
+      .replaceAll('ı', 'i')
+      .replaceAll('ğ', 'g')
+      .replaceAll('ü', 'u')
+      .replaceAll('ş', 's')
+      .replaceAll('ö', 'o')
+      .replaceAll('ç', 'c')
+      .replaceAll('é', 'e')
+      .replaceAll('á', 'a')
+      .replaceAll('ñ', 'n')
       .replaceAll(RegExp(r'[^\w\s]'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 }
 
-/// Ä°ki takÄ±m adÄ± arasÄ±ndaki benzerlik skoru (0.0 - 1.0)
+/// İki takım adı arasındaki benzerlik skoru (0.0 - 1.0)
 double teamSimilarity(String name1, String name2) {
   final n1 = normalize(name1);
   final n2 = normalize(name2);
 
-  // Tam eÅŸleÅŸme
+  // Tam eşleşme
   if (n1 == n2) return 1.0;
 
-  // Biri diÄŸerini iÃ§eriyor
+  // Biri diğerini içeriyor
   if (n1.contains(n2) || n2.contains(n1)) return 0.9;
 
-  // Kelime kesiÅŸimi (Jaccard)
+  // Kelime kesişimi (Jaccard)
   final words1 = n1.split(' ').toSet();
   final words2 = n2.split(' ').toSet();
   final intersection = words1.intersection(words2);
@@ -169,7 +169,7 @@ double teamSimilarity(String name1, String name2) {
 
   if (jaccard >= 0.5) return 0.7 + jaccard * 0.2;
 
-  // Ä°lk 3 karakter
+  // İlk 3 karakter
   if (n1.length >= 3 && n2.length >= 3 && n1.substring(0, 3) == n2.substring(0, 3)) {
     return 0.6;
   }
@@ -177,7 +177,7 @@ double teamSimilarity(String name1, String name2) {
   return jaccard * 0.5;
 }
 
-/// Bir API-Football maÃ§Ä± iÃ§in en iyi Mackolik eÅŸleÅŸmesini bul
+/// Bir API-Football maçı için en iyi Mackolik eşleşmesini bul
 MatchResult? findMackolikMatch(LiveMatch liveMatch, List<MackolikMatch> mackolikMatches) {
   MackolikMatch? bestMatch;
   double bestScore = 0;
@@ -211,11 +211,11 @@ MatchResult? findMackolikMatch(LiveMatch liveMatch, List<MackolikMatch> mackolik
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// 3. MACKOLIK VERÄ° Ã‡EKÄ°CÄ°LERÄ°
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. MACKOLIK VERİ ÇEKİCİLERİ
+// ═══════════════════════════════════════════════════════════════════════════
 
-/// MatchData â†’ Events + Lineups (JSON)
+/// MatchData → Events + Lineups (JSON)
 Future<Map<String, dynamic>?> fetchMatchDetails(int mackolikId) async {
   final url = 'https://arsiv.mackolik.com/Match/MatchData.aspx?t=dtl&id=$mackolikId&s=0';
   try {
@@ -227,12 +227,12 @@ Future<Map<String, dynamic>?> fetchMatchDetails(int mackolikId) async {
     if (res.body.trim().startsWith('<')) return null; // HTML = hata
     return jsonDecode(res.body) as Map<String, dynamic>;
   } catch (e) {
-    logErr('  âŒ Details $mackolikId: $e');
+    logErr('  ❌ Details $mackolikId: $e');
     return null;
   }
 }
 
-/// OptaStats â†’ Ä°statistikler (HTML)
+/// OptaStats → İstatistikler (HTML)
 Future<String> fetchMatchStats(int mackolikId) async {
   final url = 'https://arsiv.mackolik.com/AjaxHandlers/MatchHandler.aspx?command=optaStats&id=$mackolikId';
   try {
@@ -242,12 +242,12 @@ Future<String> fetchMatchStats(int mackolikId) async {
     });
     return res.statusCode == 200 ? res.body : '';
   } catch (e) {
-    logErr('  âŒ Stats $mackolikId: $e');
+    logErr('  ❌ Stats $mackolikId: $e');
     return '';
   }
 }
 
-/// Head2Head â†’ H2H (HTML)
+/// Head2Head → H2H (HTML)
 Future<String?> fetchMatchH2H(int mackolikId) async {
   final url = 'https://arsiv.mackolik.com/Match/Head2Head.aspx?id=$mackolikId&s=1';
   try {
@@ -259,12 +259,12 @@ Future<String?> fetchMatchH2H(int mackolikId) async {
     if (res.body.contains('Object moved') || res.body.contains('PageError.htm')) return null;
     return res.body;
   } catch (e) {
-    logErr('  âŒ H2H $mackolikId: $e');
+    logErr('  ❌ H2H $mackolikId: $e');
     return null;
   }
 }
 
-/// Standings â†’ Puan Durumu (HTML)
+/// Standings → Puan Durumu (HTML)
 Future<String> fetchMatchStandings(int mackolikId) async {
   final url = 'https://arsiv.mackolik.com/AjaxHandlers/StandingHandler.aspx?command=matchStanding&id=$mackolikId&sv=1';
   try {
@@ -274,42 +274,21 @@ Future<String> fetchMatchStandings(int mackolikId) async {
     });
     return res.statusCode == 200 ? res.body : '';
   } catch (e) {
-    logErr('  âŒ Standings $mackolikId: $e');
+    logErr('  ❌ Standings $mackolikId: $e');
     return '';
   }
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// 4. DÃ–NÃœÅÃœM: Mackolik â†’ Supabase Tablo ÅemasÄ±
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. DÖNÜŞÜM: Mackolik → Supabase Tablo Şeması
+// ═══════════════════════════════════════════════════════════════════════════
 
-/// EVENTS: details.e â†’ match_events satÄ±rlarÄ±
-/// Åema: fixture_id, event_type, event_detail, player_name, assist_name, elapsed_time, team_id, team_name
+/// EVENTS: details.e → match_events satırları
+/// Şema: fixture_id, event_type, event_detail, player_name, assist_name, elapsed_time, team_id, team_name
 List<Map<String, dynamic>> transformEvents(Map<String, dynamic> details, MatchResult match) {
-  // Mackolik JSON yapÄ±sÄ±: events details['e'] veya details['d']['e'] iÃ§inde olabilir
-  List? events;
-
-  // Ä°lk olarak details['e'] dene
-  final directEvents = details['e'] as List?;
-  if (directEvents != null && directEvents.isNotEmpty) {
-    events = directEvents;
-  } else {
-    // Alternatif olarak details['d']['e'] dene
-    final matchData = details['d'] as Map<String, dynamic>?;
-    if (matchData != null) {
-      final nestedEvents = matchData['e'] as List?;
-      if (nestedEvents != null && nestedEvents.isNotEmpty) {
-        log('  â„¹ï¸ Events: details.d.e den alÄ±ndÄ±');
-        events = nestedEvents;
-      }
-    }
-  }
-
-  if (events == null || events.isEmpty) {
-    log('  âš ï¸ Events: events dizisi bulunamadÄ± veya boÅŸ');
-    return [];
-  }
+  final events = details['e'] as List? ?? [];
+  if (events.isEmpty) return [];
 
   int substHome = 0, substAway = 0;
 
@@ -325,7 +304,7 @@ List<Map<String, dynamic>> transformEvents(Map<String, dynamic> details, MatchRe
     final teamSide = teamCode == 1 ? 'home' : 'away';
     final mapped = eventTypeMap[typeCode] ?? {'type': 'Other', 'detail': ''};
 
-    // Substitution numaralandÄ±rma
+    // Substitution numaralandırma
     String eventDetail = mapped['detail']!;
     if (mapped['type'] == 'subst') {
       if (teamSide == 'home') {
@@ -341,10 +320,10 @@ List<Map<String, dynamic>> transformEvents(Map<String, dynamic> details, MatchRe
     String? assistName;
     if (extra['astName'] != null) assistName = '${extra['astName']}';
 
-    // Substitution: giren oyuncu assist_name'e, Ã§Ä±kan player_name'e
+    // Substitution: giren oyuncu assist_name'e, çıkan player_name'e
     if (mapped['type'] == 'subst') {
-      // Mackolik: ev[3] = giren, extra.outName = Ã§Ä±kan
-      // Supabase formatÄ±: player_name = Ã§Ä±kan/giren, assist_name = diÄŸeri
+      // Mackolik: ev[3] = giren, extra.outName = çıkan
+      // Supabase formatı: player_name = çıkan/giren, assist_name = diğeri
       final inPlayer = playerName.isNotEmpty ? playerName : null;
       final outPlayer = extra['outName'] != null ? '${extra['outName']}' : null;
       return {
@@ -372,8 +351,8 @@ List<Map<String, dynamic>> transformEvents(Map<String, dynamic> details, MatchRe
   }).where((e) => e.isNotEmpty).toList();
 }
 
-/// LINEUPS: details.h/a â†’ match_lineups.data JSON
-/// Åema: fixture_id, data (jsonb), updated_at
+/// LINEUPS: details.h/a → match_lineups.data JSON
+/// Şema: fixture_id, data (jsonb), updated_at
 List<Map<String, dynamic>>? transformLineups(Map<String, dynamic> details, MatchResult match) {
   List<Map<String, dynamic>> parsePlayers(List? arr, int startCount) {
     if (arr == null) return [];
@@ -391,21 +370,8 @@ List<Map<String, dynamic>>? transformLineups(Map<String, dynamic> details, Match
     }).where((p) => p.isNotEmpty).toList();
   }
 
-  // Mackolik JSON yapÄ±sÄ±: lineups details['h'] veya details['d']['h'] iÃ§inde olabilir
-  List? homeList = details['h'] as List?;
-  List? awayList = details['a'] as List?;
-
-  // Fallback: details['d']['h'] ve details['d']['a'] dene
-  if ((homeList == null || homeList.isEmpty) && (awayList == null || awayList.isEmpty)) {
-    final matchData = details['d'] as Map<String, dynamic>?;
-    if (matchData != null) {
-      homeList = matchData['h'] as List?;
-      awayList = matchData['a'] as List?;
-    }
-  }
-
-  final homePlayers = parsePlayers(homeList, 11);
-  final awayPlayers = parsePlayers(awayList, 11);
+  final homePlayers = parsePlayers(details['h'] as List?, 11);
+  final awayPlayers = parsePlayers(details['a'] as List?, 11);
 
   if (homePlayers.isEmpty && awayPlayers.isEmpty) return null;
 
@@ -437,18 +403,18 @@ List<Map<String, dynamic>>? transformLineups(Map<String, dynamic> details, Match
   ];
 }
 
-/// STATISTICS: optaStats HTML â†’ match_statistics.data JSON
-/// Mackolik HTML'i parse edip API-Football formatÄ±na Ã§evir
+/// STATISTICS: optaStats HTML → match_statistics.data JSON
+/// Mackolik HTML'i parse edip API-Football formatına çevir
 List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) {
   if (html.trim().length < 20) return null;
 
-  // JSON geliyorsa stats HTML deÄŸil, atla
+  // JSON geliyorsa stats HTML değil, atla
   if (html.trim().startsWith('{') || html.trim().startsWith('[')) {
-    log('  âš ï¸ Stats: JSON dÃ¶ndÃ¼, HTML bekleniyor â€” atlanÄ±yor');
+    log('  ⚠️ Stats: JSON döndü, HTML bekleniyor — atlanıyor');
     return null;
   }
 
-  // Basit yaklaÅŸÄ±m: 3 listeyi ayrÄ± ayrÄ± Ã§ek, sonra zip'le
+  // Basit yaklaşım: 3 listeyi ayrı ayrı çek, sonra zip'le
   final homeValues = RegExp(r'team-1-statistics-text">\s*([^<]+)\s*<')
       .allMatches(html)
       .map((m) => m.group(1)!.trim())
@@ -464,29 +430,29 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
       .map((m) => m.group(1)!.trim())
       .toList();
 
-  log('  ğŸ” Stats parse: ${titles.length} istatistik bulundu');
+  log('  🔍 Stats parse: ${titles.length} istatistik bulundu');
 
-  // 3 liste aynÄ± uzunlukta olmalÄ±
+  // 3 liste aynı uzunlukta olmalı
   final count = [homeValues.length, titles.length, awayValues.length].reduce((a, b) => a < b ? a : b);
   if (count == 0) {
-    log('  âš ï¸ Stats: HTML parse baÅŸarÄ±sÄ±z, 0 istatistik');
+    log('  ⚠️ Stats: HTML parse başarısız, 0 istatistik');
     return null;
   }
 
-  // DeÄŸer formatlama: API-Football formatÄ±na Ã§evir
+  // Değer formatlama: API-Football formatına çevir
   dynamic formatValue(String raw, String statType) {
     raw = raw.trim();
-    // YÃ¼zde deÄŸerleri: "%50" â†’ "50%"
+    // Yüzde değerleri: "%50" → "50%"
     if (raw.startsWith('%')) return '${raw.substring(1)}%';
-    // Oran deÄŸerleri: "8/25" â†’ "8/25" (string olarak)
+    // Oran değerleri: "8/25" → "8/25" (string olarak)
     if (raw.contains('/')) return raw;
-    // SayÄ±sal deÄŸerler: "12" â†’ 12
+    // Sayısal değerler: "12" → 12
     final n = int.tryParse(raw);
     if (n != null) return n;
     return raw;
   }
 
-  // Home ve Away statistics listelerini oluÅŸtur
+  // Home ve Away statistics listelerini oluştur
   final homeStats = <Map<String, dynamic>>[];
   final awayStats = <Map<String, dynamic>>[];
 
@@ -524,12 +490,12 @@ List<Map<String, dynamic>>? transformStatistics(String html, MatchResult match) 
   ];
 }
 
-/// H2H: Head2Head HTML â†’ match_h2h.data JSON
-/// Åema: h2h_key (text), data (jsonb), updated_at
+/// H2H: Head2Head HTML → match_h2h.data JSON
+/// Şema: h2h_key (text), data (jsonb), updated_at
 List<Map<String, dynamic>>? transformH2H(String html) {
   final h2hMatches = <Map<String, dynamic>>[];
 
-  final h2hRe = RegExp(r'AralarÄ±ndaki MaÃ§lar\s*<\/div>[\s\S]*?<table[^>]*class="md-table3"[^>]*>([\s\S]*?)<\/table>');
+  final h2hRe = RegExp(r'Aralarındaki Maçlar\s*<\/div>[\s\S]*?<table[^>]*class="md-table3"[^>]*>([\s\S]*?)<\/table>');
   final h2hSection = h2hRe.firstMatch(html);
   if (h2hSection == null) return null;
 
@@ -579,8 +545,8 @@ List<Map<String, dynamic>>? transformH2H(String html) {
   return h2hMatches.isNotEmpty ? h2hMatches : null;
 }
 
-/// STANDINGS: StandingHandler HTML â†’ league_standings.data JSON
-/// Åema: league_id (text), data (jsonb), updated_at
+/// STANDINGS: StandingHandler HTML → league_standings.data JSON
+/// Şema: league_id (text), data (jsonb), updated_at
 List<Map<String, dynamic>>? transformStandings(String html) {
   if (html.trim().length < 50) return null;
 
@@ -624,20 +590,21 @@ List<Map<String, dynamic>>? transformStandings(String html) {
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 // 5. SUPABASE YAZMA
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 
 Future<void> writeEvents(String fixtureId, List<Map<String, dynamic>> events) async {
-  if (events.isEmpty) return;
+  if (events.isEmpty) {
+    log('  ⚠️ Events: Yeni event yok, mevcut veri korunuyor');
+    return;
+  }
   try {
-    // Mevcut eventleri sil
     await supabase.from('match_events').delete().eq('fixture_id', fixtureId);
-    // Yeni eventleri yaz
     await supabase.from('match_events').insert(events);
-    log('  âœ… Events: ${events.length} yazÄ±ldÄ±');
+    log('  ✅ Events: ${events.length} yazıldı');
   } catch (e) {
-    logErr('  âŒ Events yazma: $e');
+    logErr('  ❌ Events yazma: $e');
   }
 }
 
@@ -648,9 +615,9 @@ Future<void> writeStatistics(String fixtureId, List<Map<String, dynamic>> stats)
       'data': stats,
       'updated_at': DateTime.now().toIso8601String(),
     });
-    log('  âœ… Statistics gÃ¼ncellendi');
+    log('  ✅ Statistics güncellendi');
   } catch (e) {
-    logErr('  âŒ Stats yazma: $e');
+    logErr('  ❌ Stats yazma: $e');
   }
 }
 
@@ -661,9 +628,9 @@ Future<void> writeLineups(String fixtureId, List<Map<String, dynamic>> lineups) 
       'data': lineups,
       'updated_at': DateTime.now().toIso8601String(),
     });
-    log('  âœ… Lineups gÃ¼ncellendi');
+    log('  ✅ Lineups güncellendi');
   } catch (e) {
-    logErr('  âŒ Lineups yazma: $e');
+    logErr('  ❌ Lineups yazma: $e');
   }
 }
 
@@ -674,9 +641,9 @@ Future<void> writeH2H(String h2hKey, List<Map<String, dynamic>> h2hData) async {
       'data': h2hData,
       'updated_at': DateTime.now().toIso8601String(),
     });
-    log('  âœ… H2H gÃ¼ncellendi ($h2hKey)');
+    log('  ✅ H2H güncellendi ($h2hKey)');
   } catch (e) {
-    logErr('  âŒ H2H yazma: $e');
+    logErr('  ❌ H2H yazma: $e');
   }
 }
 
@@ -687,47 +654,36 @@ Future<void> writeStandings(String leagueId, List<Map<String, dynamic>> data) as
       'data': data,
       'updated_at': DateTime.now().toIso8601String(),
     });
-    log('  âœ… Standings gÃ¼ncellendi (league: $leagueId)');
+    log('  ✅ Standings güncellendi (league: $leagueId)');
   } catch (e) {
-    logErr('  âŒ Standings yazma: $e');
+    logErr('  ❌ Standings yazma: $e');
   }
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 // 6. ANA PIPELINE
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 
 Future<void> processMatch(MatchResult match) async {
-  log('\nâš½ ${match.homeTeamName} vs ${match.awayTeamName}');
-  log('   API: ${match.apiFixtureId} â†’ Mackolik: ${match.mackolikId} (gÃ¼ven: ${(match.confidence * 100).toStringAsFixed(0)}%)');
+  log('\n⚽ ${match.homeTeamName} vs ${match.awayTeamName}');
+  log('   API: ${match.apiFixtureId} → Mackolik: ${match.mackolikId} (güven: ${(match.confidence * 100).toStringAsFixed(0)}%)');
 
   final macId = match.mackolikId;
 
-  // 1. Details â†’ Events + Lineups
-  log('   ğŸ“¥ Details Ã§ekiliyor...');
+  // 1. Details → Events + Lineups
   final details = await fetchMatchDetails(macId);
   if (details != null) {
-    log('   âœ… Details alÄ±ndÄ±, eventler iÅŸleniyor...');
     final events = transformEvents(details, match);
-    log('   ğŸ“Š ${events.length} event bulundu');
     await writeEvents('${match.apiFixtureId}', events);
 
     final lineups = transformLineups(details, match);
-    if (lineups != null) {
-      log('   ğŸ‘¥ ${lineups.length} takÄ±m kadrosu bulundu');
-      await writeLineups('${match.apiFixtureId}', lineups);
-    } else {
-      log('   âš ï¸ Kadro bulunamadÄ±');
-    }
-  } else {
-    log('   âŒ Details alÄ±namadÄ±!');
+    if (lineups != null) await writeLineups('${match.apiFixtureId}', lineups);
   }
 
   await Future.delayed(Duration(milliseconds: 400 + (DateTime.now().millisecond % 400)));
 
   // 2. Statistics
-  log('   ğŸ“Š Ä°statistikler Ã§ekiliyor...');
   final statsHtml = await fetchMatchStats(macId);
   final statsData = transformStatistics(statsHtml, match);
   if (statsData != null) await writeStatistics('${match.apiFixtureId}', statsData);
@@ -753,36 +709,36 @@ Future<void> processMatch(MatchResult match) async {
     await writeStandings('${match.leagueId}', standingsData);
   }
 
-  log('   âœ… TamamlandÄ±');
+  log('   ✅ Tamamlandı');
 }
 
 Future<void> runPipeline() async {
-  log('ğŸš€ ScorePop Mackolik Pipeline baÅŸlatÄ±ldÄ±');
-  log('â° ${DateTime.now().toIso8601String()}\n');
+  log('🚀 ScorePop Mackolik Pipeline başlatıldı');
+  log('⏰ ${DateTime.now().toIso8601String()}\n');
 
-  // 1. Supabase'den canlÄ± maÃ§larÄ± Ã§ek
-  log('ğŸ“‹ Supabase live_matches sorgulanÄ±yor...');
+  // 1. Supabase'den canlı maçları çek
+  log('📋 Supabase live_matches sorgulanıyor...');
   final liveResponse = await supabase
       .from('live_matches')
       .select()
       .inFilter('match_status', ['1H', '2H', 'HT', 'ET', 'PEN', 'LIVE']);
 
   final liveMatches = (liveResponse as List).map((m) => LiveMatch.fromMap(m)).toList();
-  log('   ${liveMatches.length} canlÄ± maÃ§ bulundu');
+  log('   ${liveMatches.length} canlı maç bulundu');
 
   if (liveMatches.isEmpty) {
-    log('ğŸ“­ CanlÄ± maÃ§ yok, Ã§Ä±kÄ±lÄ±yor.');
+    log('📭 Canlı maç yok, çıkılıyor.');
     return;
   }
 
-  // 2. Mackolik'ten gÃ¼nÃ¼n maÃ§larÄ±nÄ± Ã§ek
+  // 2. Mackolik'ten günün maçlarını çek
   final mackolikMatches = await fetchMackolikDailyMatches();
   if (mackolikMatches.isEmpty) {
-    log('âš ï¸  Mackolik maÃ§ listesi boÅŸ, Ã§Ä±kÄ±lÄ±yor.');
+    log('⚠️  Mackolik maç listesi boş, çıkılıyor.');
     return;
   }
 
-  // 3. EÅŸleÅŸtir ve iÅŸle
+  // 3. Eşleştir ve işle
   int matched = 0, failed = 0;
 
   for (final live in liveMatches) {
@@ -792,20 +748,20 @@ Future<void> runPipeline() async {
       matched++;
       await Future.delayed(Duration(milliseconds: 800 + (DateTime.now().millisecond % 600)));
     } else {
-      log('  âš ï¸  EÅŸleÅŸme bulunamadÄ±: ${live.homeTeamName} vs ${live.awayTeamName}');
+      log('  ⚠️  Eşleşme bulunamadı: ${live.homeTeamName} vs ${live.awayTeamName}');
       failed++;
     }
   }
 
-  log('\nğŸ Pipeline tamamlandÄ±');
-  log('   EÅŸleÅŸen: $matched | EÅŸleÅŸmeyen: $failed | Toplam: ${liveMatches.length}');
+  log('\n🏁 Pipeline tamamlandı');
+  log('   Eşleşen: $matched | Eşleşmeyen: $failed | Toplam: ${liveMatches.length}');
 }
 
 /// Manuel test: belirli fixture + mackolik id
 Future<void> runManualTest(String fixtureId, String mackolikId) async {
-  log('ğŸ§ª TEST MODU: fixture=$fixtureId mackolik=$mackolikId\n');
+  log('🧪 TEST MODU: fixture=$fixtureId mackolik=$mackolikId\n');
 
-  // live_matches'tan bilgileri Ã§ek
+  // live_matches'tan bilgileri çek
   final response = await supabase
       .from('live_matches')
       .select()
@@ -829,9 +785,9 @@ Future<void> runManualTest(String fixtureId, String mackolikId) async {
 }
 
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 // MODELLER
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ═══════════════════════════════════════════════════════════════════════════
 
 class LiveMatch {
   final int fixtureId;
@@ -917,21 +873,21 @@ class MatchResult {
   });
 }
 
-// â”€â”€â”€ LOGGING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── LOGGING ────────────────────────────────────────────────────────────────
 void log(String msg) => print(msg);
 void logErr(String msg) => print('[ERR] $msg');
 
 
-// â”€â”€â”€ ENTRY POINT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ENTRY POINT ────────────────────────────────────────────────────────────
 void main(List<String> arguments) async {
   if (supabaseUrl.isEmpty || supabaseKey.isEmpty) {
-    print('âŒ SUPABASE_URL ve SUPABASE_SERVICE_ROLE_KEY environment variable\'larÄ± gerekli');
+    print('❌ SUPABASE_URL ve SUPABASE_SERVICE_ROLE_KEY environment variable\'ları gerekli');
     exit(1);
   }
 
   supabase = SupabaseClient(supabaseUrl, supabaseKey);
 
-  // ArgÃ¼manlarÄ± parse et
+  // Argümanları parse et
   final args = <String, String>{};
   for (final arg in arguments) {
     if (arg.startsWith('--')) {
@@ -949,7 +905,7 @@ void main(List<String> arguments) async {
       await runPipeline();
     }
   } catch (e, st) {
-    print('ğŸ’¥ Kritik hata: $e');
+    print('💥 Kritik hata: $e');
     print(st);
     exit(1);
   }
