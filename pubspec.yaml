@@ -1,0 +1,10 @@
+name: mackolik_pipeline
+description: ScorePop Mackolik Live Data Pipeline
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  http: ^1.2.0
+  supabase: ^2.4.0
