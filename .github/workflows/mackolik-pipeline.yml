@@ -1,0 +1,59 @@
+name: Mackolik Live Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Çalışma modu'
+        required: true
+        default: 'live'
+        type: choice
+        options:
+          - live
+          - test
+      fixture_id:
+        description: 'API-Football Fixture ID (test modunda)'
+        required: false
+      mackolik_id:
+        description: 'Mackolik Match ID (test modunda)'
+        required: false
+
+  # Her 2 dakikada canlı maçları kontrol et
+  # UTC 09-23 = TR 12:00-02:00 (maç saatleri)
+  schedule:
+    - cron: '*/2 9-23 * * *'
+    - cron: '*/2 0-1 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install dependencies
+        working-directory: mackolik_worker
+        run: dart pub get
+
+      - name: Run Pipeline
+        working-directory: mackolik_worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'live' }}"
+          FIXTURE="${{ github.event.inputs.fixture_id }}"
+          MACKOLIK="${{ github.event.inputs.mackolik_id }}"
+
+          if [ "$MODE" = "test" ] && [ -n "$FIXTURE" ] && [ -n "$MACKOLIK" ]; then
+            echo "🧪 Test: fixture=$FIXTURE mackolik=$MACKOLIK"
+            dart run mackolik_pipeline.dart --fixture=$FIXTURE --mackolik=$MACKOLIK
+          else
+            echo "⚽ Canlı maç pipeline"
+            dart run mackolik_pipeline.dart
+          fi
