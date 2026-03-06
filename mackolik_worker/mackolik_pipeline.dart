@@ -223,6 +223,10 @@ Future<Map<String, dynamic>?> fetchMatchDetails(int mackolikId) async {
       ...macHeaders,
       'Referer': 'https://arsiv.mackolik.com/Mac/$mackolikId/',
     });
+    // DEBUG: Ham veriyi görelim
+    log('  🔍 Stats HTTP ${res.statusCode} | Uzunluk: ${res.body.length}');
+    log('  🔍 Stats ilk 500 karakter: ${res.body.substring(0, res.body.length > 500 ? 500 : res.body.length)}');
+
     if (res.statusCode != 200 || res.body.trim().isEmpty) return null;
     if (res.body.trim().startsWith('<')) return null; // HTML = hata
     return jsonDecode(res.body) as Map<String, dynamic>;
