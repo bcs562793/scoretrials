@@ -20,9 +20,7 @@ on:
 
   # Her 2 dakikada canlı maçları kontrol et
   # UTC 09-23 = TR 12:00-02:00 (maç saatleri)
-  schedule:
-    - cron: '*/2 9-23 * * *'
-    - cron: '*/2 0-1 * * *'
+ 
 
 jobs:
   sync:
