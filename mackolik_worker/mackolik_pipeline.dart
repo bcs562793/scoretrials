@@ -7,7 +7,7 @@ import 'package:dotenv/dotenv.dart';
 import 'package:intl/intl.dart';
 import 'package:googleapis_auth/auth_io.dart' as auth;
 
-// ─── GLOBAL DEĞİŞKENLER ────────────────────────────────────────
+// ─── GLOBAL DEĞİŞKENLEeR ────────────────────────────────────────
 late final SupabaseClient _sb;
 late final String _apiFKey;
 final _http = http.Client();
